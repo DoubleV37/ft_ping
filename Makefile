@@ -3,7 +3,8 @@ CC = gcc
 NAME = ft_ping
 
 SRC =	srcs/main.c \
-		srcs/commands.c
+		srcs/commands.c \
+		srcs/socket.c \
 
 RM = rm -rf
 

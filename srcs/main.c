@@ -29,6 +29,10 @@ int parsing(int argc, char **argv)
 	{
 		if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0)
 			printf("verbose\n");
+		else if (argv[i][0] != '-')
+		{
+			cmd_ping(argv[i]);
+		}
 		else if (strcmp(argv[i], "-?") == 0 || strcmp(argv[i], "--help") == 0)
 			return (cmd_help());
 		else if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0)

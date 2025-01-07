@@ -4,11 +4,18 @@
 # include <stdio.h>
 # include <string.h>
 # include <stdlib.h>
+# include <unistd.h>
+# include <sys/socket.h>
+# include <netinet/in.h>
+# include <netinet/ip.h>
+# include <netinet/ip_icmp.h>
+# include <arpa/inet.h>
 
 // int parsing(int argc, char **argv);
 
 int	cmd_help(void);
 int	cmd_version(void);
 
+int	cmd_ping(char *ip_addr_dest);
 
 #endif
