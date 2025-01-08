@@ -1,22 +1,22 @@
 #include "../ft_ping.h"
 
 unsigned short checksum(void *b, int len) {
-    unsigned short *buf = b;
-    unsigned int sum = 0;
-    unsigned short result;
+	unsigned short *buf = b;
+	unsigned int sum = 0;
+	unsigned short result;
 
-    for (sum = 0; len > 1; len -= 2) {
-        sum += *buf++;
-    }
+	for (sum = 0; len > 1; len -= 2) {
+		sum += *buf++;
+	}
 
-    if (len == 1) {
-        sum += *(unsigned char *)buf;
-    }
+	if (len == 1) {
+		sum += *(unsigned char *)buf;
+	}
 
-    sum = (sum >> 16) + (sum & 0xFFFF);
-    sum += (sum >> 16);
-    result = ~sum;
-    return result;
+	sum = (sum >> 16) + (sum & 0xFFFF);
+	sum += (sum >> 16);
+	result = ~sum;
+	return result;
 }
 
 int	create_socket(void)
@@ -31,97 +31,109 @@ int	create_socket(void)
 		return (-1);
 	}
 	timeout.tv_sec = 1;
-    timeout.tv_usec = 0;
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
-        perror("setsockopt error");
-        close(sock);
-        return -1;
-    }
+	timeout.tv_usec = 0;
+	if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) < 0) {
+		perror("setsockopt error");
+		close(sock);
+		return -1;
+	}
 	return (sock);
 }
 
-void prepare_data(struct sockaddr_in *dest_addr, char *ip_addr_dest, char *packet, size_t packet_size)
-{
-    struct icmp icmp_hdr;
+int send_ping(int sock, struct sockaddr_in *dest_addr, int sequence) {
+    char packet[64];
+    struct icmp *header = (struct icmp *)packet;
 
-    // Configure destination address
-    memset(dest_addr, 0, sizeof(*dest_addr));
-    dest_addr->sin_family = AF_INET;
-    dest_addr->sin_addr.s_addr = inet_addr(ip_addr_dest);
+    header->icmp_type = ICMP_ECHO;
+    header->icmp_code = 0;
+    header->icmp_id = htons(getpid());
+    header->icmp_seq = htons(sequence);
+	header->icmp_cksum = 0;
 
-    // Prepare ICMP header
-    memset(&icmp_hdr, 0, sizeof(icmp_hdr));
-    icmp_hdr.icmp_type = ICMP_ECHO;
-    icmp_hdr.icmp_code = 0;
-    icmp_hdr.icmp_id = htons(getpid() & 0xFFFF);
-    icmp_hdr.icmp_seq = htons(1);
+    header->icmp_cksum = checksum((uint16_t *)packet, sizeof(packet));
 
-    // Clear the entire packet buffer
-    memset(packet, 0, packet_size);
-
-    // Copy ICMP header into the packet
-    memcpy(packet, &icmp_hdr, sizeof(icmp_hdr));
-
-    // Fill the remaining space in the packet with a pattern or data
-    char *data_part = packet + sizeof(icmp_hdr);
-    memset(data_part, 0x42, packet_size - sizeof(icmp_hdr)); // Fill with pattern '0x42'
-
-    // Calculate checksum over the entire packet
-    struct icmp *icmp_packet = (struct icmp *)packet; // Access as ICMP struct
-    icmp_packet->icmp_cksum = 0;                      // Set checksum field to 0 first
-    icmp_packet->icmp_cksum = checksum(packet, packet_size); // Compute checksum
-}
-
-int send_packet(int sockfd, struct sockaddr_in *dest_addr, char *packet, size_t packet_size)
-{
-	if (sendto(sockfd, packet, packet_size, 0, (struct sockaddr *)dest_addr, sizeof(*dest_addr)) <= 0)
-	{
-		perror("Sendto error");
-		close(sockfd);
-		return 1;
-	}
-	return 0;
-}
-
-int cmd_ping(char *ip_addr_dest) {
-    int sockfd;
-    char packet[84];  // Standard ping packet size (ICMP header + 56 bytes of data)
-    struct sockaddr_in dest_addr;
-    char recv_buffer[1500];  // Large enough for a typical MTU
-    struct ip *ip_hdr;
-    struct icmp *icmp_reply;
-
-    sockfd = create_socket();
-    if (sockfd < 0) {
+    if (sendto(sock, packet, sizeof(packet), 0, (struct sockaddr *)dest_addr, sizeof(*dest_addr)) < 0) {
+        perror("Send failed");
         return 1;
     }
-	prepare_data(&dest_addr, ip_addr_dest, packet, sizeof(packet))
-	if (send_packet(sockfd, &dest_addr, packet, sizeof(packet)) != 0) {
+    return 0;
+}
+
+int recv_ping(int sock) {
+	char recv_buffer[1500];
+	struct ip *ip_hdr;
+	struct icmp *icmp_reply;
+
+	ssize_t recv_len = recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0, NULL, NULL);
+	if (recv_len <= 0) {
+		perror("Recvfrom error or timeout");
 		return 1;
 	}
+	ip_hdr = (struct ip *)recv_buffer;
+	int ip_header_len = ip_hdr->ip_hl * 4;
+	icmp_reply = (struct icmp *)(recv_buffer + ip_header_len);
 
-    while (1) {
-        ssize_t recv_len = recvfrom(sockfd, recv_buffer, sizeof(recv_buffer), 0, NULL, NULL);
-        if (recv_len <= 0) {
-            perror("Recvfrom error or timeout");
-            close(sockfd);
-            return 1;
-        }
+	if (icmp_reply->icmp_type == ICMP_ECHOREPLY && ntohs(icmp_reply->icmp_id) == (getpid() & 0xFFFF)) {
+		printf("%ld bytes from %s: icmp_seq=%d ttl=%d\n", recv_len - ip_header_len, inet_ntoa(ip_hdr->ip_src), ntohs(icmp_reply->icmp_seq), ip_hdr->ip_ttl);
+		return 0;
+	}
+	return 1;
+}
 
-        // Navigate past IP header to ICMP packet
-        ip_hdr = (struct ip *)recv_buffer;
-        int ip_header_len = ip_hdr->ip_hl * 4;
-        icmp_reply = (struct icmp *)(recv_buffer + ip_header_len);
-        // printf("Réponse reçue: Type %d, Code %d, ID %d, Seq %d\n", icmp_reply->icmp_type, icmp_reply->icmp_code, ntohs(icmp_reply->icmp_id), ntohs(icmp_reply->icmp_seq));
-        if (icmp_reply->icmp_type == ICMP_ECHOREPLY && ntohs(icmp_reply->icmp_id) == (getpid() & 0xFFFF)) {
-            printf("Ping réussi! Réponse de %s\n", ip_addr_dest);
-			send_packet(sockfd, &dest_addr, packet, sizeof(packet));
-            // close(sockfd);
-            // return 0;
-        }
-    }
+void	get_ip_with_hostname(char *hostname, char final_ip[INET_ADDRSTRLEN]) {
+	struct addrinfo hints, *info, *p;
+	int gai_result;
 
-    printf("Aucune réponse valide reçue\n");
-    close(sockfd);
-    return 1;
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_CANONNAME;
+
+	if ((gai_result = getaddrinfo(hostname, "http", &hints, &info)) != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(gai_result));
+		exit(1);
+	}
+
+	for(p = info; p != NULL; p = p->ai_next) {
+		void *addr;
+		if (p->ai_family == AF_INET) {
+			addr = &((struct sockaddr_in *)p->ai_addr)->sin_addr;
+			inet_ntop(p->ai_family, addr, final_ip, INET_ADDRSTRLEN);
+			freeaddrinfo(info);
+			return;
+		}
+	}
+	freeaddrinfo(info);
+}
+
+int cmd_ping(char *raw_ip_addr_dest) {
+	int sockfd;
+	struct sockaddr_in dest_addr;
+	int sequence;
+
+	char ip_addr_dest[INET_ADDRSTRLEN];
+	get_ip_with_hostname(raw_ip_addr_dest, ip_addr_dest);
+
+	sockfd = create_socket();
+	if (sockfd < 0) {
+		return 1;
+	}
+	memset(&dest_addr, 0, sizeof(dest_addr));
+	dest_addr.sin_family = AF_INET;
+	dest_addr.sin_addr.s_addr = inet_addr(ip_addr_dest);
+	printf("PING %s (%s): 56 data bytes\n", raw_ip_addr_dest, ip_addr_dest);
+	sequence = 0;
+	while (1) {
+		if (send_ping(sockfd, &dest_addr, sequence) != 0) {
+			close(sockfd);
+			return 1;
+		}
+		recv_ping(sockfd);
+		sequence++;
+		sleep(1);
+	}
+
+	printf("Aucune réponse valide reçue\n");
+	close(sockfd);
+	return 1;
 }

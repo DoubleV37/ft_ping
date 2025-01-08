@@ -6,10 +6,13 @@
 # include <stdlib.h>
 # include <unistd.h>
 # include <sys/socket.h>
+# include <sys/types.h>
+# include <netdb.h>
 # include <netinet/in.h>
 # include <netinet/ip.h>
 # include <netinet/ip_icmp.h>
 # include <arpa/inet.h>
+# include <time.h>
 
 // int parsing(int argc, char **argv);
 

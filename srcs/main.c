@@ -56,6 +56,11 @@ int parsing(int argc, char **argv)
 
 int	main(int argc, char **argv)
 {
+	if (getgid() != 0)
+	{
+		printf("ft_ping: You must have root privilege\n");
+		return (1);
+	}
 	if (!parsing(argc, argv))
 		return (1);
 	return (0);
