@@ -1,5 +1,7 @@
 #include "../ft_ping.h"
 
+bool g_run = true;
+
 char *clean_argv(char *argv)
 {
 	int i;
@@ -57,7 +59,7 @@ int parsing(int argc, char **argv)
 void	handle_sigint(int sig)
 {
 	(void)sig;
-	sleep(10);
+	g_run = false;
 }
 
 int	main(int argc, char **argv)

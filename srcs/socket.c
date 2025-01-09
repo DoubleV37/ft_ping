@@ -60,10 +60,10 @@ int create_socket_send(void) {
 
 int send_ping(int sock, struct sockaddr_in *dest_addr, int sequence) {
 	char packet[84];
-	char *ip_src;
+	char ip_src[INET_ADDRSTRLEN];
 
-	ip_src = get_source_ip();
-	printf("ip_src: %s\n", ip_src);
+	bzero(ip_src, INET_ADDRSTRLEN);
+	get_source_ip(ip_src);
 	memset(packet, 0, sizeof(packet));
 
 	struct icmp *header = (struct icmp *)(packet + sizeof(struct ip));
@@ -143,7 +143,7 @@ void	get_ip_with_hostname(char *hostname, char final_ip[INET_ADDRSTRLEN]) {
 	freeaddrinfo(info);
 }
 
-char	*get_source_ip() {
+char	*get_source_ip(char *ip) {
 	struct ifaddrs *ifaddr, *ifa;
     if (getifaddrs(&ifaddr) == -1) {
         perror("getifaddrs");
@@ -154,8 +154,8 @@ char	*get_source_ip() {
             continue;
         if (ifa->ifa_addr->sa_family == AF_INET && !(ifa->ifa_flags & IFF_LOOPBACK)) {
             struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
-            char *ip = malloc(INET_ADDRSTRLEN);
 			ip = inet_ntoa(sa->sin_addr);
+			freeifaddrs(ifaddr);
 			return (ip);
         }
     }
@@ -186,7 +186,7 @@ int cmd_ping(char *raw_ip_addr_dest) {
 	dest_addr.sin_addr.s_addr = inet_addr(ip_addr_dest);
 	printf("PING %s (%s): 56 data bytes\n", raw_ip_addr_dest, ip_addr_dest);
 	sequence = 0;
-	while (1) {
+	while (g_run) {
 		if (send_ping(sockfd_send, &dest_addr, sequence) != 0) {
 			close(sockfd);
 			close(sockfd_send);
@@ -196,7 +196,7 @@ int cmd_ping(char *raw_ip_addr_dest) {
 		sequence++;
 		sleep(1);
 	}
-	printf("Aucune réponse valide reçue\n");
+	printf("--- %s ft_ping statistics ---\n", raw_ip_addr_dest);
 	close(sockfd);
 	close(sockfd_send);
 	return 1;

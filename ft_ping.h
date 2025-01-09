@@ -16,6 +16,9 @@
 # include <time.h>
 # include <signal.h>
 # include <ifaddrs.h>
+# include <stdbool.h>
+
+extern bool g_run;
 
 char	*get_source_ip();
 
