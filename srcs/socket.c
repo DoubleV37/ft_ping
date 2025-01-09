@@ -19,7 +19,7 @@ unsigned short checksum(void *b, int len) {
 	return result;
 }
 
-int	create_socket(void)
+int	create_socket_recv(void)
 {
 	int	sock;
 	struct timeval timeout;
@@ -37,12 +37,49 @@ int	create_socket(void)
 		close(sock);
 		return -1;
 	}
+
 	return (sock);
 }
 
+int create_socket_send(void) {
+	int sock;
+
+	sock = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+	if (sock < 0) {
+		perror("Socket error");
+		return -1;
+	}
+	int disable = 1;
+	if (setsockopt(sock, IPPROTO_IP, IP_HDRINCL, &disable, sizeof(disable)) < 0) {
+		perror("setsockopt error");
+		close(sock);
+		return -1;
+	}
+	return sock;
+}
+
 int send_ping(int sock, struct sockaddr_in *dest_addr, int sequence) {
-    char packet[64];
-    struct icmp *header = (struct icmp *)packet;
+	char packet[84];
+	char *ip_src;
+
+	ip_src = get_source_ip();
+	printf("ip_src: %s\n", ip_src);
+	memset(packet, 0, sizeof(packet));
+
+	struct icmp *header = (struct icmp *)(packet + sizeof(struct ip));
+	struct ip *ip_header = (struct ip *)packet;
+
+	ip_header->ip_hl = 5;
+	ip_header->ip_v = 4;
+	ip_header->ip_tos = 0;
+	ip_header->ip_len = 84;
+	ip_header->ip_id = 0;
+	ip_header->ip_off = 0;
+	ip_header->ip_ttl = 64;
+	ip_header->ip_p = IPPROTO_ICMP;
+	ip_header->ip_src.s_addr = inet_addr(ip_src);
+	ip_header->ip_dst.s_addr = dest_addr->sin_addr.s_addr;
+	ip_header->ip_sum = checksum((uint16_t *)packet, sizeof(packet));
 
     header->icmp_type = ICMP_ECHO;
     header->icmp_code = 0;
@@ -106,16 +143,42 @@ void	get_ip_with_hostname(char *hostname, char final_ip[INET_ADDRSTRLEN]) {
 	freeaddrinfo(info);
 }
 
+char	*get_source_ip() {
+	struct ifaddrs *ifaddr, *ifa;
+    if (getifaddrs(&ifaddr) == -1) {
+        perror("getifaddrs");
+        return (NULL);
+    }
+    for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+            continue;
+        if (ifa->ifa_addr->sa_family == AF_INET && !(ifa->ifa_flags & IFF_LOOPBACK)) {
+            struct sockaddr_in *sa = (struct sockaddr_in *)ifa->ifa_addr;
+            char *ip = malloc(INET_ADDRSTRLEN);
+			ip = inet_ntoa(sa->sin_addr);
+			return (ip);
+        }
+    }
+    freeifaddrs(ifaddr);
+	return (NULL);
+}
+
 int cmd_ping(char *raw_ip_addr_dest) {
 	int sockfd;
+	int sockfd_send;
 	struct sockaddr_in dest_addr;
 	int sequence;
 
 	char ip_addr_dest[INET_ADDRSTRLEN];
 	get_ip_with_hostname(raw_ip_addr_dest, ip_addr_dest);
 
-	sockfd = create_socket();
+	sockfd = create_socket_recv();
 	if (sockfd < 0) {
+		return 1;
+	}
+	sockfd_send = create_socket_send();
+	if (sockfd_send < 0) {
+		close(sockfd_send);
 		return 1;
 	}
 	memset(&dest_addr, 0, sizeof(dest_addr));
@@ -124,16 +187,17 @@ int cmd_ping(char *raw_ip_addr_dest) {
 	printf("PING %s (%s): 56 data bytes\n", raw_ip_addr_dest, ip_addr_dest);
 	sequence = 0;
 	while (1) {
-		if (send_ping(sockfd, &dest_addr, sequence) != 0) {
+		if (send_ping(sockfd_send, &dest_addr, sequence) != 0) {
 			close(sockfd);
+			close(sockfd_send);
 			return 1;
 		}
 		recv_ping(sockfd);
 		sequence++;
 		sleep(1);
 	}
-
 	printf("Aucune réponse valide reçue\n");
 	close(sockfd);
+	close(sockfd_send);
 	return 1;
 }

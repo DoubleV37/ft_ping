@@ -54,8 +54,15 @@ int parsing(int argc, char **argv)
 	return (1);
 }
 
+void	handle_sigint(int sig)
+{
+	(void)sig;
+	sleep(10);
+}
+
 int	main(int argc, char **argv)
 {
+	signal(SIGINT, handle_sigint);
 	if (getgid() != 0)
 	{
 		printf("ft_ping: You must have root privilege\n");
@@ -63,5 +70,6 @@ int	main(int argc, char **argv)
 	}
 	if (!parsing(argc, argv))
 		return (1);
+
 	return (0);
 }

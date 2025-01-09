@@ -11,10 +11,13 @@
 # include <netinet/in.h>
 # include <netinet/ip.h>
 # include <netinet/ip_icmp.h>
+# include <net/if.h>
 # include <arpa/inet.h>
 # include <time.h>
+# include <signal.h>
+# include <ifaddrs.h>
 
-// int parsing(int argc, char **argv);
+char	*get_source_ip();
 
 int	cmd_help(void);
 int	cmd_version(void);
