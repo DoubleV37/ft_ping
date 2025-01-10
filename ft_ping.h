@@ -7,6 +7,7 @@
 # include <unistd.h>
 # include <sys/socket.h>
 # include <sys/types.h>
+# include <sys/time.h>
 # include <netdb.h>
 # include <netinet/in.h>
 # include <netinet/ip.h>
@@ -20,10 +21,20 @@
 
 extern bool g_run;
 
-char	*get_source_ip();
+typedef struct ping_pckt{
+	int seq;
+	struct timeval sent_time;
+	struct timeval recv_time;
+	struct ping_pckt *next;
+} ping_pckt;
 
 int	cmd_help(void);
 int	cmd_version(void);
+
+ping_pckt* add_ping(ping_pckt *head, int seq_num);
+ping_pckt* find_ping(ping_pckt *head, int seq_num);
+void	free_ping(ping_pckt *head);
+long time_diff(struct timeval start, struct timeval end);
 
 int	cmd_ping(char *ip_addr_dest);
 

@@ -5,6 +5,7 @@ NAME = ft_ping
 SRC =	srcs/main.c \
 		srcs/commands.c \
 		srcs/socket.c \
+		srcs/ping_utils.c \
 
 RM = rm -rf
 
