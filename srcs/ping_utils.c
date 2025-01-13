@@ -36,11 +36,21 @@ void free_ping(ping_pckt *head) {
 	}
 }
 
-long time_diff(struct timeval start, struct timeval end) {
-    long seconds = end.tv_sec - start.tv_sec;
-    long microseconds = end.tv_usec - start.tv_usec;
+double time_diff(struct timeval start, struct timeval end) {
+    double seconds = (double)(end.tv_sec - start.tv_sec);
+    double microseconds = (double)(end.tv_usec - start.tv_usec);
 
-    long total_ms = (seconds * 1000) + (microseconds / 1000);
+    return (seconds * 1000.0) + (microseconds / 1000.0); // Temps total en ms (avec fraction)
+}
 
-    return total_ms;
+float ft_sqrt(float number) {
+    float x = number;
+    float y = 1.0;
+    float epsilon = 0.0001;
+
+    while (x - y > epsilon) {
+        x = (x + y) / 2;
+        y = number / x;
+    }
+    return x;
 }

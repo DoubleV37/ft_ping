@@ -18,6 +18,7 @@
 # include <signal.h>
 # include <ifaddrs.h>
 # include <stdbool.h>
+# include <math.h>
 
 extern bool g_run;
 
@@ -34,7 +35,8 @@ int	cmd_version(void);
 ping_pckt* add_ping(ping_pckt *head, int seq_num);
 ping_pckt* find_ping(ping_pckt *head, int seq_num);
 void	free_ping(ping_pckt *head);
-long time_diff(struct timeval start, struct timeval end);
+double time_diff(struct timeval start, struct timeval end);
+float ft_sqrt(float number);
 
 int	cmd_ping(char *ip_addr_dest);
 

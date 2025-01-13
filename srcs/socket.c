@@ -147,7 +147,7 @@ int recv_ping(int sock, ping_pckt *pings) {
 	struct icmp *icmp_reply;
 	struct timeval recv_time;
 	long nb_bytes;
-	long diff;
+	float diff;
 
 	ssize_t recv_len = recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0, NULL, NULL);
 	if (recv_len <= 0) {
@@ -166,24 +166,60 @@ int recv_ping(int sock, ping_pckt *pings) {
 	}
 	if (icmp_reply->icmp_type == ICMP_ECHOREPLY && ntohs(icmp_reply->icmp_id) == (getpid() & 0xFFFF)) {
 		nb_bytes = recv_len - ip_header_len;
-		printf("%ld bytes from %s: icmp_seq=%d ttl=%d time=%ld ms\n", nb_bytes, inet_ntoa(ip_hdr->ip_src), ntohs(icmp_reply->icmp_seq), ip_hdr->ip_ttl, diff);
+		printf("%ld bytes from %s: icmp_seq=%d ttl=%d time=%.3f ms\n", nb_bytes, inet_ntoa(ip_hdr->ip_src), ntohs(icmp_reply->icmp_seq), ip_hdr->ip_ttl, diff);
 		return 0;
 	}
 	return 1;
 }
 
+void print_stats(int sent, ping_pckt *pings) {
+    float avg = 0;
+    float diff_time = 0;
+    int received = 0;
+    float min_time = 0;
+    float max_time = 0;
+    float avg_time = 0;
+    float variance = 0;
+    float stddev = 0;
+	int percent_loss = 0;
 
+    ping_pckt *current = pings;
 
-// void    print_stats(int sent, int received, struct timeval *start, struct timeval *end) {
-// 	double time = time_diff(start, end);
-// 	double min = 0.0;
-// 	double max = 0.0;
-// 	double avg = 0.0;
-// 	double stddev = 0.0;
+    while (current) {
+        if (current->recv_time.tv_sec != 0) {
+            diff_time = time_diff(current->sent_time, current->recv_time);
+            if (min_time == 0 || diff_time < min_time)
+                min_time = diff_time;
+            if (diff_time > max_time)
+                max_time = diff_time;
+            avg += diff_time;
+            received++;
+        }
+        current = current->next;
+    }
 
-// 	printf("%d packets transmitted, %d packets received, %d%% packet loss\n", sent, received, (sent - received) * 100 / sent);
-// 	printf("round-trip min/avg/max/stddev = %.3f/%.3f/%.3f/%.3f ms\n", 0.0, time / received, time, 0.0);
-// }
+    if (received > 0) {
+        avg_time = avg / received;
+    }
+
+    current = pings;
+    while (current) {
+        if (current->recv_time.tv_sec != 0) {
+            diff_time = time_diff(current->sent_time, current->recv_time);
+            variance += (diff_time - avg_time) * (diff_time - avg_time);
+        }
+        current = current->next;
+    }
+
+    if (received > 0) {
+        stddev = ft_sqrt(variance / received);
+	}
+	if (sent != 0) {
+		percent_loss = (sent - received) * 100 / sent;
+	}
+	printf("%d packets transmitted, %d packets received, %d%% packet loss\n", sent, received, percent_loss);
+	printf("round-trip min/avg/max/stddev = %.3f/%.3f/%.3f/%.3f ms\n", min_time, avg_time, max_time, stddev);
+}
 
 int cmd_ping(char *raw_ip_addr_dest) {
 	int sockfd;
@@ -222,6 +258,7 @@ int cmd_ping(char *raw_ip_addr_dest) {
 		sleep(1);
 	}
 	printf("--- %s ft_ping statistics ---\n", raw_ip_addr_dest);
+	print_stats(sequence, pings);
 	close(sockfd);
 	close(sockfd_send);
 	free_ping(pings);
