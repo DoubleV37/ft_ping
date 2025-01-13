@@ -37,20 +37,41 @@ void free_ping(ping_pckt *head) {
 }
 
 double time_diff(struct timeval start, struct timeval end) {
-    double seconds = (double)(end.tv_sec - start.tv_sec);
-    double microseconds = (double)(end.tv_usec - start.tv_usec);
+	double seconds;
+	double microseconds;
+	seconds = (double)(end.tv_sec - start.tv_sec);
+	microseconds = (double)(end.tv_usec - start.tv_usec);
 
-    return (seconds * 1000.0) + (microseconds / 1000.0); // Temps total en ms (avec fraction)
+	return (seconds * 1000.0) + (microseconds / 1000.0);
 }
 
 float ft_sqrt(float number) {
-    float x = number;
-    float y = 1.0;
-    float epsilon = 0.0001;
+	float x = number;
+	float y = 1.0;
+	float epsilon = 0.0001;
 
-    while (x - y > epsilon) {
-        x = (x + y) / 2;
-        y = number / x;
-    }
-    return x;
+	while (x - y > epsilon) {
+		x = (x + y) / 2;
+		y = number / x;
+	}
+	return x;
+}
+
+unsigned short checksum(void *b, int len) {
+	unsigned short *buf = b;
+	unsigned int sum = 0;
+	unsigned short result;
+
+	for (sum = 0; len > 1; len -= 2) {
+		sum += *buf++;
+	}
+
+	if (len == 1) {
+		sum += *(unsigned char *)buf;
+	}
+
+	sum = (sum >> 16) + (sum & 0xFFFF);
+	sum += (sum >> 16);
+	result = ~sum;
+	return result;
 }

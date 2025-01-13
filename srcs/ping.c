@@ -46,25 +46,6 @@ char	*get_source_ip(char *ip) {
 	return (NULL);
 }
 
-unsigned short checksum(void *b, int len) {
-	unsigned short *buf = b;
-	unsigned int sum = 0;
-	unsigned short result;
-
-	for (sum = 0; len > 1; len -= 2) {
-		sum += *buf++;
-	}
-
-	if (len == 1) {
-		sum += *(unsigned char *)buf;
-	}
-
-	sum = (sum >> 16) + (sum & 0xFFFF);
-	sum += (sum >> 16);
-	result = ~sum;
-	return result;
-}
-
 int	create_socket_recv(void)
 {
 	int	sock;
@@ -170,55 +151,6 @@ int recv_ping(int sock, ping_pckt *pings) {
 		return 0;
 	}
 	return 1;
-}
-
-void print_stats(int sent, ping_pckt *pings) {
-    float avg = 0;
-    float diff_time = 0;
-    int received = 0;
-    float min_time = 0;
-    float max_time = 0;
-    float avg_time = 0;
-    float variance = 0;
-    float stddev = 0;
-	int percent_loss = 0;
-
-    ping_pckt *current = pings;
-
-    while (current) {
-        if (current->recv_time.tv_sec != 0) {
-            diff_time = time_diff(current->sent_time, current->recv_time);
-            if (min_time == 0 || diff_time < min_time)
-                min_time = diff_time;
-            if (diff_time > max_time)
-                max_time = diff_time;
-            avg += diff_time;
-            received++;
-        }
-        current = current->next;
-    }
-
-    if (received > 0) {
-        avg_time = avg / received;
-    }
-
-    current = pings;
-    while (current) {
-        if (current->recv_time.tv_sec != 0) {
-            diff_time = time_diff(current->sent_time, current->recv_time);
-            variance += (diff_time - avg_time) * (diff_time - avg_time);
-        }
-        current = current->next;
-    }
-
-    if (received > 0) {
-        stddev = ft_sqrt(variance / received);
-	}
-	if (sent != 0) {
-		percent_loss = (sent - received) * 100 / sent;
-	}
-	printf("%d packets transmitted, %d packets received, %d%% packet loss\n", sent, received, percent_loss);
-	printf("round-trip min/avg/max/stddev = %.3f/%.3f/%.3f/%.3f ms\n", min_time, avg_time, max_time, stddev);
 }
 
 int cmd_ping(char *raw_ip_addr_dest) {

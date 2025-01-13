@@ -4,8 +4,10 @@ NAME = ft_ping
 
 SRC =	srcs/main.c \
 		srcs/commands.c \
-		srcs/socket.c \
+		srcs/ping.c \
 		srcs/ping_utils.c \
+		srcs/stats_ping.c \
+		srcs/parsing.c
 
 RM = rm -rf
 
