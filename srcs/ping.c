@@ -52,6 +52,7 @@ int	create_socket_recv(void)
 	struct timeval timeout;
 
 	sock = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+	if (sock)
 	if (sock < 0)
 	{
 		perror("socket error");
@@ -85,7 +86,7 @@ int create_socket_send(void) {
 	return sock;
 }
 
-int send_ping(int sock, struct sockaddr_in *dest_addr, int sequence) {
+int send_ping(int sock, struct sockaddr_in *dest_addr, int sequence, int ttl) {
 	char packet[84];
 	char ip_src[INET_ADDRSTRLEN];
 
@@ -102,7 +103,7 @@ int send_ping(int sock, struct sockaddr_in *dest_addr, int sequence) {
 	ip_header->ip_len = 84;
 	ip_header->ip_id = 0;
 	ip_header->ip_off = 0;
-	ip_header->ip_ttl = 64;
+	ip_header->ip_ttl = ttl;
 	ip_header->ip_p = IPPROTO_ICMP;
 	ip_header->ip_src.s_addr = inet_addr(ip_src);
 	ip_header->ip_dst.s_addr = dest_addr->sin_addr.s_addr;
@@ -129,8 +130,10 @@ int recv_ping(int sock, ping_pckt *pings) {
 	struct timeval recv_time;
 	long nb_bytes;
 	float diff;
+	struct sockaddr_in	src_addr;
+	socklen_t		addr_len = sizeof(struct sockaddr_in);
 
-	ssize_t recv_len = recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0, NULL, NULL);
+	ssize_t recv_len = recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0, (struct sockaddr*)&src_addr, &addr_len);
 	if (recv_len <= 0) {
 		perror("Recvfrom error or timeout");
 		return 1;
@@ -153,7 +156,8 @@ int recv_ping(int sock, ping_pckt *pings) {
 	return 1;
 }
 
-int cmd_ping(char *raw_ip_addr_dest) {
+int cmd_ping(char *raw_ip_addr_dest, bool verbose, int ttl) {
+	(void)verbose;
 	int sockfd;
 	int sockfd_send;
 	struct sockaddr_in dest_addr;
@@ -178,7 +182,7 @@ int cmd_ping(char *raw_ip_addr_dest) {
 	dest_addr.sin_addr.s_addr = inet_addr(ip_addr_dest);
 	printf("PING %s (%s): 56 data bytes\n", raw_ip_addr_dest, ip_addr_dest);
 	while (g_run) {
-		if (send_ping(sockfd_send, &dest_addr, sequence) != 0) {
+		if (send_ping(sockfd_send, &dest_addr, sequence, ttl) != 0) {
 			close(sockfd);
 			close(sockfd_send);
 			return 1;

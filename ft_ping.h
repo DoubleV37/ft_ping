@@ -42,6 +42,6 @@ void print_stats(int sent, ping_pckt *pings);
 
 int parsing(int argc, char **argv);
 
-int	cmd_ping(char *ip_addr_dest);
+int	cmd_ping(char *ip_addr_dest, bool verbose, int ttl);
 
 #endif
