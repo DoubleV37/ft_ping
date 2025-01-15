@@ -22,18 +22,21 @@ char *clean_argv(char *argv)
 
 int parsing(int argc, char **argv)
 {
-	int i;
-	int index_target;
-	int ttl = 255;
-	bool verbose = false;
+	int i = 1;
 	char *cmd;
 
-	i = 1;
+	if (argc == 1)
+	{
+		printf("ft_ping: missing host operand\n");
+		printf("Try 'ft_ping --help' for more information.\n");
+		return (1);
+	}
+	ping ping;
 	while (i < argc)
 	{
 		if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0)
 		{
-			verbose = true;
+			ping.params.verbose = true;
 			printf("verbose\n");
 		}
 		else if (strcmp(argv[i], "--ttl") == 0)
@@ -41,8 +44,7 @@ int parsing(int argc, char **argv)
 			if (i + 1 < argc)
 			{
 				i++;
-				ttl = atoi(argv[i]);
-				printf("ttl: %s\n", argv[i]);
+				ping.params.ttl = atoi(argv[i]);
 			}
 			else
 			{
@@ -53,14 +55,20 @@ int parsing(int argc, char **argv)
 		}
 		else if (argv[i][0] != '-')
 		{
-			index_target = i;
+			ping.params.raw_dest = strdup(argv[i]);
 			i++;
 			continue;
 		}
 		else if (strcmp(argv[i], "-?") == 0 || strcmp(argv[i], "--help") == 0)
+		{
+			//free ping->params.ip_addr_dest
 			return (cmd_help());
+		}
 		else if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0)
+		{
+			//free ping->params.ip_addr_dest
 			return (cmd_version());
+		}
 		else
 		{
 			cmd = clean_argv(argv[i]);
@@ -70,11 +78,13 @@ int parsing(int argc, char **argv)
 		}
 		i++;
 	}
-	cmd_ping(argv[index_target], verbose, ttl);
-	if (argc == 1)
+	if (ping.params.raw_dest)
 	{
-		printf("ft_ping: missing host operand\n");
-		printf("Try 'ft_ping --help' for more information.\n");
+		ping.params.ip_addr_src = get_source_ip();
+		if (cmd_ping(&ping))
+		{
+			return (1);
+		}
 	}
-	return (1);
+	return (0);
 }

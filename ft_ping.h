@@ -28,6 +28,34 @@ typedef struct ping_pckt{
 	struct ping_pckt *next;
 } ping_pckt;
 
+typedef struct s_ping_data{
+	struct ip ip_hdr;
+	struct icmp icmp_hdr;
+	char data[56];
+} ping_data;
+
+typedef struct s_socks{
+	int recv;
+	int send;
+} socks;
+
+typedef struct s_params{
+	uint16_t id;
+	char *ip_addr_src;
+	char *raw_dest;
+	char ip_addr_dest[16];
+	int ttl;
+	bool verbose;
+	int seq;
+} params;
+
+typedef struct s_ping{
+	params params;
+	socks socks;
+	ping_pckt *pings;
+} ping;
+
+
 int	cmd_help(void);
 int	cmd_version(void);
 
@@ -42,6 +70,7 @@ void print_stats(int sent, ping_pckt *pings);
 
 int parsing(int argc, char **argv);
 
-int	cmd_ping(char *ip_addr_dest, bool verbose, int ttl);
+int	cmd_ping(ping *ping);
+char	*get_source_ip();
 
 #endif
