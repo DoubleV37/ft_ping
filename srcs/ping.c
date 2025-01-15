@@ -87,7 +87,11 @@ int create_socket_send(void) {
 	return sock;
 }
 
-int send_ping(struct sockaddr_in *dest_addr, ping *ping) {
+int send_ping(ping *ping) {
+	struct sockaddr_in dest_addr;
+	memset(&dest_addr, 0, sizeof(dest_addr));
+	dest_addr.sin_family = AF_INET;
+	dest_addr.sin_addr.s_addr = inet_addr(ping->params.ip_addr_dest);
     size_t packet_size = sizeof(ping_data);
     ping_data *data = (ping_data *)malloc(packet_size);
     if (!data) {
@@ -105,7 +109,7 @@ int send_ping(struct sockaddr_in *dest_addr, ping *ping) {
     data->ip_hdr.ip_ttl = ping->params.ttl;
     data->ip_hdr.ip_p = IPPROTO_ICMP;
     data->ip_hdr.ip_src.s_addr = inet_addr(ping->params.ip_addr_src);
-    data->ip_hdr.ip_dst.s_addr = dest_addr->sin_addr.s_addr;
+    data->ip_hdr.ip_dst.s_addr = dest_addr.sin_addr.s_addr;
     data->ip_hdr.ip_sum = 0;
     data->ip_hdr.ip_sum = checksum((uint16_t *)&data->ip_hdr, sizeof(data->ip_hdr));
 
@@ -116,7 +120,7 @@ int send_ping(struct sockaddr_in *dest_addr, ping *ping) {
     data->icmp_hdr.icmp_cksum = 0;
     data->icmp_hdr.icmp_cksum = checksum((uint16_t *)&data->icmp_hdr, sizeof(data->icmp_hdr));
 
-    if (sendto(ping->socks.send, data, packet_size, 0, (struct sockaddr *)dest_addr, sizeof(*dest_addr)) < 0) {
+    if (sendto(ping->socks.send, data, packet_size, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr)) < 0) {
         perror("Send failed");
         free(data);
         return 1;
@@ -126,17 +130,17 @@ int send_ping(struct sockaddr_in *dest_addr, ping *ping) {
 }
 
 
-int recv_ping(int sock, ping_pckt *pings) {
+int recv_ping(ping *ping) {
 	char recv_buffer[4096];
 	struct ip *ip_hdr;
 	struct icmp *icmp_reply;
 	struct timeval recv_time;
 	long nb_bytes;
-	float diff;
+	float diff = 0;
 	struct sockaddr_in	src_addr;
 	socklen_t		addr_len = sizeof(struct sockaddr_in);
 
-	ssize_t recv_len = recvfrom(sock, recv_buffer, sizeof(recv_buffer), 0, (struct sockaddr*)&src_addr, &addr_len);
+	ssize_t recv_len = recvfrom(ping->socks.recv, recv_buffer, sizeof(recv_buffer), 0, (struct sockaddr*)&src_addr, &addr_len);
 	if (recv_len <= 0) {
 		perror("Recvfrom error or timeout");
 		return 1;
@@ -145,29 +149,33 @@ int recv_ping(int sock, ping_pckt *pings) {
 	int ip_header_len = ip_hdr->ip_hl * 4;
 	icmp_reply = (struct icmp *)(recv_buffer + ip_header_len);
 
-	ping_pckt *ping = find_ping(pings, ntohs(icmp_reply->icmp_seq));
-	if (ping) {
-		gettimeofday(&recv_time, NULL);
-		ping->recv_time = recv_time;
-		diff = time_diff(ping->sent_time, ping->recv_time);
+	if (ip_hdr->ip_id == ping->params.id) {
+		return 2;
 	}
+
 	if (icmp_reply->icmp_type == ICMP_TIME_EXCEEDED) {
-		printf("From %s icmp_seq=%d Time to live exceeded\n", inet_ntoa(ip_hdr->ip_src), ntohs(icmp_reply->icmp_seq));
+		printf("From %s icmp_seq=%d Time to live exceeded\n", ping->params.ip_addr_dest, ntohs(icmp_reply->icmp_seq));
 		return 0;
 	}
-	if (icmp_reply->icmp_type == ICMP_ECHOREPLY && ntohs(icmp_reply->icmp_id) == (getpid() & 0xFFFF)) {
+	if (icmp_reply->icmp_type == ICMP_ECHOREPLY) {
+		ping_pckt *ping_target = find_ping(ping->pings, ntohs(icmp_reply->icmp_seq));
+		if (ping_target) {
+			gettimeofday(&recv_time, NULL);
+			ping_target->recv_time = recv_time;
+			diff = time_diff(ping_target->sent_time, ping_target->recv_time);
+		}
 		nb_bytes = recv_len - ip_header_len;
-		printf("%ld bytes from %s: icmp_seq=%d ttl=%d time=%.3f ms\n", nb_bytes, inet_ntoa(ip_hdr->ip_src), ntohs(icmp_reply->icmp_seq), ip_hdr->ip_ttl, diff);
+		printf("%ld bytes from %s: icmp_seq=%d ttl=%d time=%.3f ms\n", nb_bytes, ping->params.ip_addr_dest, ntohs(icmp_reply->icmp_seq), ip_hdr->ip_ttl, diff);
+		return 0;
+	}
+	if (icmp_reply->icmp_type == 8) {
+		printf("From %s icmp_seq=%d Request\n", ping->params.ip_addr_dest, ntohs(icmp_reply->icmp_seq));
 		return 0;
 	}
 	return 1;
 }
 
 int cmd_ping(ping *ping) {
-	struct sockaddr_in dest_addr;
-
-	get_ip_with_hostname(ping->params.raw_dest, ping->params.ip_addr_dest);
-
 	ping->socks.recv = create_socket_recv();
 	if (ping->socks.recv < 0) {
 		return 1;
@@ -178,18 +186,20 @@ int cmd_ping(ping *ping) {
 		return 1;
 	}
 	ping->params.id = getpid() & 0xFFFF;
-	memset(&dest_addr, 0, sizeof(dest_addr));
-	dest_addr.sin_family = AF_INET;
-	dest_addr.sin_addr.s_addr = inet_addr(ping->params.ip_addr_dest);
+
 	printf("PING %s (%s): 56 data bytes\n", ping->params.raw_dest, ping->params.ip_addr_dest);
 	while (g_run) {
-		if (send_ping(&dest_addr, ping) != 0) {
+		if (send_ping(ping) != 0) {
 			close(ping->socks.recv);
 			close(ping->socks.send);
 			return 1;
 		}
 		ping->pings = add_ping(ping->pings, ping->params.seq);
-		recv_ping(ping->socks.recv, ping->pings);
+		while (recv_ping(ping) == 2) {
+			if (!g_run) {
+				break;
+			}
+		}
 		ping->params.seq++;
 		sleep(1);
 	}

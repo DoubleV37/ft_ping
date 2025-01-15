@@ -32,6 +32,15 @@ int parsing(int argc, char **argv)
 		return (1);
 	}
 	ping ping;
+	ping.pings = NULL;
+	ping.params.seq = 0;
+	ping.socks.recv = -1;
+	ping.socks.send = -1;
+	ping.params.ttl = 64;
+	ping.params.verbose = false;
+	ping.params.ip_addr_src = NULL;
+	ping.params.raw_dest = NULL;
+	ping.params.ip_addr_dest[0] = '\0';
 	while (i < argc)
 	{
 		if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0)
@@ -81,6 +90,7 @@ int parsing(int argc, char **argv)
 	if (ping.params.raw_dest)
 	{
 		ping.params.ip_addr_src = get_source_ip();
+		get_ip_with_hostname(ping.params.raw_dest, ping.params.ip_addr_dest);
 		if (cmd_ping(&ping))
 		{
 			return (1);

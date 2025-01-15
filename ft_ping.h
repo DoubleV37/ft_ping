@@ -72,5 +72,6 @@ int parsing(int argc, char **argv);
 
 int	cmd_ping(ping *ping);
 char	*get_source_ip();
+void	get_ip_with_hostname(char *hostname, char final_ip[INET_ADDRSTRLEN]);
 
 #endif
