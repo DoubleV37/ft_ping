@@ -70,12 +70,12 @@ int parsing(int argc, char **argv)
 		}
 		else if (strcmp(argv[i], "-?") == 0 || strcmp(argv[i], "--help") == 0)
 		{
-			//free ping->params.ip_addr_dest
+			free(ping.params.raw_dest);
 			return (cmd_help());
 		}
 		else if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0)
 		{
-			//free ping->params.ip_addr_dest
+			free(ping.params.raw_dest);
 			return (cmd_version());
 		}
 		else
@@ -83,6 +83,7 @@ int parsing(int argc, char **argv)
 			cmd = clean_argv(argv[i]);
 			printf("ft_ping: invalid option -- '%s'\n", cmd);
 			free(cmd);
+			free(ping.params.raw_dest);
 			return (1);
 		}
 		i++;
@@ -93,8 +94,10 @@ int parsing(int argc, char **argv)
 		get_ip_with_hostname(ping.params.raw_dest, ping.params.ip_addr_dest);
 		if (cmd_ping(&ping))
 		{
+			free(ping.params.raw_dest);
 			return (1);
 		}
 	}
+	free(ping.params.raw_dest);
 	return (0);
 }
