@@ -175,6 +175,17 @@ int recv_ping(ping *ping) {
 	return 1;
 }
 
+void print_first_line(ping *ping) {
+	if (ping->params.verbose)
+	{
+		char hexa_id[5];
+		sprintf(hexa_id, "%x", ping->params.id);
+		printf("PING %s (%s): 56 data bytes, id 0x%s = %d\n", ping->params.raw_dest, ping->params.ip_addr_dest, hexa_id, ping->params.id);
+	}
+	else
+		printf("PING %s (%s): 56 data bytes\n", ping->params.raw_dest, ping->params.ip_addr_dest);
+}
+
 int cmd_ping(ping *ping) {
 	ping->socks.recv = create_socket_recv();
 	if (ping->socks.recv < 0) {
@@ -187,7 +198,7 @@ int cmd_ping(ping *ping) {
 	}
 	ping->params.id = getpid() & 0xFFFF;
 
-	printf("PING %s (%s): 56 data bytes\n", ping->params.raw_dest, ping->params.ip_addr_dest);
+	print_first_line(ping);
 	while (g_run) {
 		if (send_ping(ping) != 0) {
 			close(ping->socks.recv);
