@@ -20,6 +20,28 @@ char *clean_argv(char *argv)
 	return (argvclean);
 }
 
+void free_raw_dest(char *raw_dest)
+{
+	if (raw_dest)
+		free(raw_dest);
+}
+
+int verif_ttl(ping *ping, int ttl)
+{
+	if (ttl < 1)
+	{
+		printf("ft_ping: option value too big: %d\n", ttl);
+		return (1);
+	}
+	else if (ttl > 255)
+	{
+		printf("ft_ping: option value too big: %d\n", ttl);
+		return (1);
+	}
+	ping->params.ttl = ttl;
+	return (0);
+}
+
 int parsing(int argc, char **argv)
 {
 	int i = 1;
@@ -44,16 +66,17 @@ int parsing(int argc, char **argv)
 	while (i < argc)
 	{
 		if (strcmp(argv[i], "-v") == 0 || strcmp(argv[i], "--verbose") == 0)
-		{
 			ping.params.verbose = true;
-			printf("verbose\n");
-		}
 		else if (strcmp(argv[i], "--ttl") == 0)
 		{
 			if (i + 1 < argc)
 			{
 				i++;
-				ping.params.ttl = atoi(argv[i]);
+				if (verif_ttl(&ping, atoi(argv[i])))
+				{
+					free_raw_dest(ping.params.raw_dest);
+					return (1);
+				}
 			}
 			else
 			{
@@ -70,12 +93,12 @@ int parsing(int argc, char **argv)
 		}
 		else if (strcmp(argv[i], "-?") == 0 || strcmp(argv[i], "--help") == 0)
 		{
-			free(ping.params.raw_dest);
+			free_raw_dest(ping.params.raw_dest);
 			return (cmd_help());
 		}
 		else if (strcmp(argv[i], "-V") == 0 || strcmp(argv[i], "--version") == 0)
 		{
-			free(ping.params.raw_dest);
+			free_raw_dest(ping.params.raw_dest);
 			return (cmd_version());
 		}
 		else
@@ -83,7 +106,7 @@ int parsing(int argc, char **argv)
 			cmd = clean_argv(argv[i]);
 			printf("ft_ping: invalid option -- '%s'\n", cmd);
 			free(cmd);
-			free(ping.params.raw_dest);
+			free_raw_dest(ping.params.raw_dest);
 			return (1);
 		}
 		i++;
@@ -94,10 +117,16 @@ int parsing(int argc, char **argv)
 		get_ip_with_hostname(ping.params.raw_dest, ping.params.ip_addr_dest);
 		if (cmd_ping(&ping))
 		{
-			free(ping.params.raw_dest);
+			free_raw_dest(ping.params.raw_dest);
 			return (1);
 		}
+		free_raw_dest(ping.params.raw_dest);
 	}
-	free(ping.params.raw_dest);
+	else
+	{
+		printf("ft_ping: missing host operand\n");
+		printf("Try 'ft_ping --help' for more information.\n");
+		return (1);
+	}
 	return (0);
 }

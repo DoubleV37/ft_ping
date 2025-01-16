@@ -8,6 +8,7 @@ int	cmd_help(void)
 	printf("  -?, --help     give this help list\n");
 	printf("  -V, --version  print program version\n");
 	printf("  -v  --verbose  verbose output\n");
+	printf("  -t  --ttl      set the time-to-live\n");
 	return (0);
 }
 
