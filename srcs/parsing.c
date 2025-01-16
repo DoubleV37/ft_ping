@@ -113,14 +113,16 @@ int parsing(int argc, char **argv)
 	}
 	if (ping.params.raw_dest)
 	{
-		ping.params.ip_addr_src = get_source_ip();
+		ping.params.ip_addr_src = strdup(get_source_ip());
 		get_ip_with_hostname(ping.params.raw_dest, ping.params.ip_addr_dest);
 		if (cmd_ping(&ping))
 		{
 			free_raw_dest(ping.params.raw_dest);
+			free(ping.params.ip_addr_src);
 			return (1);
 		}
 		free_raw_dest(ping.params.raw_dest);
+		free(ping.params.ip_addr_src);
 	}
 	else
 	{

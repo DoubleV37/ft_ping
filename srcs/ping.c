@@ -154,7 +154,36 @@ int recv_ping(ping *ping) {
 	}
 
 	if (icmp_reply->icmp_type == ICMP_TIME_EXCEEDED) {
-		printf("From %s icmp_seq=%d Time to live exceeded\n", ping->params.ip_addr_dest, ntohs(icmp_reply->icmp_seq));
+		printf("%ld bytes from %s: icmp_seq=%d Time to live exceeded\n", recv_len, inet_ntoa(ip_hdr->ip_src), ntohs(icmp_reply->icmp_seq));
+		if (ping->params.verbose) {
+			ip_hdr = (struct ip *)(recv_buffer + ip_header_len + 8);
+			printf("IP Hdr Dump\n");
+			printf(" ");
+			for (int i = 0; i < ip_header_len; i++) {
+				printf("%02x", ((unsigned char *)ip_hdr)[i]);
+				if (i % 2 == 1)
+					printf(" ");
+			}
+			printf("\n");
+			printf("Vr HL TOS  Len   ID Flg  off TTL Pro  cks      Src        Dst       Data\n");
+			char *src = strdup(inet_ntoa(ip_hdr->ip_src));
+			printf(" %1x  %1x  %02x %04x %04x   %1x %04x  %02x  %02x %04x %-15s %-15s\n",
+				ip_hdr->ip_v,
+				ip_hdr->ip_hl,
+				ip_hdr->ip_tos,
+				ntohs(ip_hdr->ip_len),
+				ntohs(ip_hdr->ip_id),
+				(ntohs(ip_hdr->ip_off) >> 13) & 0x07,
+				ntohs(ip_hdr->ip_off) & 0x1FFF,
+				ip_hdr->ip_ttl,
+				ip_hdr->ip_p,
+				ntohs(ip_hdr->ip_sum),
+				src,
+				inet_ntoa(ip_hdr->ip_dst));
+			free(src);
+			icmp_reply = (struct icmp *)(recv_buffer + ip_header_len + 8 + ip_header_len);
+			printf("ICMP: type %d, code %d, size %ld, id 0x%04x, seq 0x%04x\n", icmp_reply->icmp_type, icmp_reply->icmp_code, recv_len - ip_header_len, ntohs(icmp_reply->icmp_id), ntohs(icmp_reply->icmp_seq));
+		}
 		return 0;
 	}
 	if (icmp_reply->icmp_type == ICMP_ECHOREPLY) {
@@ -177,11 +206,7 @@ int recv_ping(ping *ping) {
 
 void print_first_line(ping *ping) {
 	if (ping->params.verbose)
-	{
-		char hexa_id[5];
-		sprintf(hexa_id, "%x", ping->params.id);
-		printf("PING %s (%s): 56 data bytes, id 0x%s = %d\n", ping->params.raw_dest, ping->params.ip_addr_dest, hexa_id, ping->params.id);
-	}
+		printf("PING %s (%s): 56 data bytes, id 0x%x = %d\n", ping->params.raw_dest, ping->params.ip_addr_dest, ping->params.id, ping->params.id);
 	else
 		printf("PING %s (%s): 56 data bytes\n", ping->params.raw_dest, ping->params.ip_addr_dest);
 }
