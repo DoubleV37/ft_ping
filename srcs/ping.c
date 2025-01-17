@@ -87,19 +87,19 @@ int create_socket_send(void) {
 	return sock;
 }
 
-int send_ping(ping *ping) {
+ping_data *build_ping_data(ping *ping) {
 	struct sockaddr_in dest_addr;
 	memset(&dest_addr, 0, sizeof(dest_addr));
 	dest_addr.sin_family = AF_INET;
 	dest_addr.sin_addr.s_addr = inet_addr(ping->params.ip_addr_dest);
-    size_t packet_size = sizeof(ping_data);
-    ping_data *data = (ping_data *)malloc(packet_size);
-    if (!data) {
-        perror("Memory allocation failed");
-        return 1;
-    }
+	size_t packet_size = sizeof(ping_data);
+	ping_data *data = (ping_data *)malloc(packet_size);
+	if (!data) {
+		perror("Malloc failed");
+		exit(1);
+	}
 
-    memset(data, 0, packet_size);
+	memset(data, 0, packet_size);
     data->ip_hdr.ip_hl = 5;
     data->ip_hdr.ip_v = 4;
     data->ip_hdr.ip_tos = 0;
@@ -116,77 +116,66 @@ int send_ping(ping *ping) {
 	data->icmp_hdr.type = ICMP_ECHO;
 	data->icmp_hdr.code = 0;
 	data->icmp_hdr.un.echo.id = htons(ping->params.id);
-	data->icmp_hdr.un.echo.sequence = ping->params.seq;
+	data->icmp_hdr.un.echo.sequence = 0;
 	data->icmp_hdr.checksum = 0;
 	data->icmp_hdr.checksum = checksum((uint16_t *)&data->icmp_hdr, sizeof(data->icmp_hdr));
 
+	return data;
+}
+
+void update_ping_data(ping_data *data, ping *ping) {
+	data->icmp_hdr.un.echo.sequence = ping->params.seq;
+	data->icmp_hdr.checksum = 0;
+	data->icmp_hdr.checksum = checksum((uint16_t *)&data->icmp_hdr, sizeof(data->icmp_hdr));
+}
+
+int send_ping(ping *ping, ping_data *data) {
+	struct sockaddr_in dest_addr;
+	memset(&dest_addr, 0, sizeof(dest_addr));
+	dest_addr.sin_family = AF_INET;
+	dest_addr.sin_addr.s_addr = inet_addr(ping->params.ip_addr_dest);
+    size_t packet_size = sizeof(ping_data);
+	update_ping_data(data, ping);
+
     if (sendto(ping->socks.send, data, packet_size, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr)) < 0) {
         perror("Send failed");
-        free(data);
         return 1;
     }
-    free(data);
     return 0;
 }
 
-
-int recv_ping(ping *ping) {
-	char recv_buffer[4096];
-	struct ip *ip_hdr;
-	struct icmphdr *icmp_reply;
-	struct timeval recv_time;
-	long nb_bytes;
-	float diff = 0;
-	struct sockaddr_in	src_addr;
-	socklen_t		addr_len = sizeof(struct sockaddr_in);
-
-	ssize_t recv_len = recvfrom(ping->socks.recv, recv_buffer, sizeof(recv_buffer), 0, (struct sockaddr*)&src_addr, &addr_len);
-	if (recv_len < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-		perror("Recvfrom timeout");
-		return 1;
-	}
-	if (recv_len <= 0) {
-		return 1;
-	}
-	ip_hdr = (struct ip *)recv_buffer;
+void print_verbose_icmphdr(char recv_buffer[4096], struct ip *ip_hdr, struct icmphdr *icmp_reply)
+{
 	int ip_header_len = ip_hdr->ip_hl * 4;
-	icmp_reply = (struct icmphdr *)(recv_buffer + ip_header_len);
 
-	if (ip_hdr->ip_id == ping->params.id) {
-		return 2;
+	ip_hdr = (struct ip *)(recv_buffer + ip_header_len + 8);
+	printf("IP Hdr Dump\n ");
+	for (int i = 0; i < ip_header_len; i+=2) {
+		printf("%02x%02x ", ((unsigned char *)ip_hdr)[i], ((unsigned char *)ip_hdr)[i + 1]);
 	}
+	printf("\nVr HL TOS  Len   ID Flg  off TTL Pro  cks      Src        Dst       Data\n");
+	printf(" %1x  %1x  %02x %04x %04x   %1x %04x  %02x  %02x %04x ",
+		ip_hdr->ip_v, ip_hdr->ip_hl, ip_hdr->ip_tos, ntohs(ip_hdr->ip_len), ntohs(ip_hdr->ip_id), (ntohs(ip_hdr->ip_off) >> 13) & 0x07,
+		ntohs(ip_hdr->ip_off) & 0x1FFF, ip_hdr->ip_ttl, ip_hdr->ip_p, ntohs(ip_hdr->ip_sum));
+	printf("%s ", inet_ntoa(ip_hdr->ip_src));
+	printf("%s\n", inet_ntoa(ip_hdr->ip_dst));
+	icmp_reply = (struct icmphdr *)(recv_buffer + ip_header_len + 8 + ip_header_len);
+	printf("ICMP: type %d, code %d, size %d, id 0x%04x, seq 0x%04x\n",
+		icmp_reply->type, icmp_reply->code, ntohs(ip_hdr->ip_len) - ip_header_len, ntohs(icmp_reply->un.echo.id), ntohs(icmp_reply->un.echo.sequence));
+}
 
+int	handle_ping_reply(ping *ping, char recv_buffer[4096], ssize_t recv_len, struct ip *ip_hdr, struct icmphdr *icmp_reply) {
+	long nb_bytes;
+	float diff;
+	struct timeval recv_time;
+	int ip_header_len = ip_hdr->ip_hl * 4;
+
+	if (ip_hdr->ip_id == ping->params.id)
+		return 2;
 	if (icmp_reply->type == ICMP_TIME_EXCEEDED) {
 		printf("%ld bytes from %s: Time to live exceeded\n", recv_len - ip_header_len, inet_ntoa(ip_hdr->ip_src));
-		if (ping->params.verbose) {
-			ip_hdr = (struct ip *)(recv_buffer + ip_header_len + 8);
-			printf("IP Hdr Dump\n");
-			printf(" ");
-			for (int i = 0; i < ip_header_len; i++) {
-				printf("%02x", ((unsigned char *)ip_hdr)[i]);
-				if (i % 2 == 1)
-					printf(" ");
-			}
-			printf("\n");
-			printf("Vr HL TOS  Len   ID Flg  off TTL Pro  cks      Src        Dst       Data\n");
-			char *src = strdup(inet_ntoa(ip_hdr->ip_src));
-			printf(" %1x  %1x  %02x %04x %04x   %1x %04x  %02x  %02x %04x %-15s %-15s\n",
-				ip_hdr->ip_v,
-				ip_hdr->ip_hl,
-				ip_hdr->ip_tos,
-				ntohs(ip_hdr->ip_len),
-				ntohs(ip_hdr->ip_id),
-				(ntohs(ip_hdr->ip_off) >> 13) & 0x07,
-				ntohs(ip_hdr->ip_off) & 0x1FFF,
-				ip_hdr->ip_ttl,
-				ip_hdr->ip_p,
-				ntohs(ip_hdr->ip_sum),
-				src,
-				inet_ntoa(ip_hdr->ip_dst));
-			free(src);
-			icmp_reply = (struct icmphdr *)(recv_buffer + ip_header_len + 8 + ip_header_len);
-			printf("ICMP: type %d, code %d, size %d, id 0x%04x, seq 0x%04x\n", icmp_reply->type, icmp_reply->code, ntohs(ip_hdr->ip_len) - ip_header_len, ntohs(icmp_reply->un.echo.id), ntohs(icmp_reply->un.echo.sequence));
-		}
+		if (ping->params.verbose)
+			print_verbose_icmphdr(recv_buffer, ip_hdr, icmp_reply);
 		return 0;
 	}
 	if (icmp_reply->type == ICMP_ECHOREPLY) {
@@ -200,11 +189,28 @@ int recv_ping(ping *ping) {
 		printf("%ld bytes from %s: icmp_seq=%d ttl=%d time=%.3f ms\n", nb_bytes, ping->params.ip_addr_dest, ntohs(icmp_reply->un.echo.sequence), ip_hdr->ip_ttl, diff);
 		return 0;
 	}
-	if (icmp_reply->type == 8) {
-		printf("From %s icmp_seq=%d Request\n", ping->params.ip_addr_dest, ntohs(icmp_reply->un.echo.sequence));
-		return 0;
-	}
 	return 1;
+}
+
+int recv_ping(ping *ping) {
+	char recv_buffer[4096];
+	struct ip *ip_hdr;
+	struct icmphdr *icmp_reply;
+	struct sockaddr_in	src_addr;
+	socklen_t		addr_len = sizeof(struct sockaddr_in);
+
+	ssize_t recv_len = recvfrom(ping->socks.recv, recv_buffer, sizeof(recv_buffer), 0, (struct sockaddr*)&src_addr, &addr_len);
+	if (recv_len < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+		perror("Recvfrom timeout");
+		return 1;
+	}
+	if (recv_len <= 0) {
+		return 1;
+	}
+	ip_hdr = (struct ip *)recv_buffer;
+	icmp_reply = (struct icmphdr *)(recv_buffer + ip_hdr->ip_hl * 4);
+
+	return (handle_ping_reply(ping, recv_buffer, recv_len, ip_hdr, icmp_reply));
 }
 
 void print_first_line(ping *ping) {
@@ -226,11 +232,14 @@ int cmd_ping(ping *ping) {
 	}
 	ping->params.id = getpid() & 0xFFFF;
 
+	ping_data *data = build_ping_data(ping);
+
 	print_first_line(ping);
 	while (g_run) {
-		if (send_ping(ping) != 0) {
+		if (send_ping(ping, data) != 0) {
 			close(ping->socks.recv);
 			close(ping->socks.send);
+			free(data);
 			return 1;
 		}
 		ping->pings = add_ping(ping->pings, ping->params.seq);
@@ -248,6 +257,7 @@ int cmd_ping(ping *ping) {
 	print_stats(ntohs(ping->params.seq), ping->pings);
 	close(ping->socks.recv);
 	close(ping->socks.send);
+	free(data);
 	free_ping(ping->pings);
 	return 1;
 }
