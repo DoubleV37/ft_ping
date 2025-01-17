@@ -16,6 +16,7 @@
 # include <arpa/inet.h>
 # include <time.h>
 # include <signal.h>
+# include <errno.h>
 # include <ifaddrs.h>
 # include <stdbool.h>
 
@@ -30,8 +31,8 @@ typedef struct ping_pckt{
 
 typedef struct s_ping_data{
 	struct ip ip_hdr;
-	struct icmp icmp_hdr;
-	char data[56];
+	struct icmphdr icmp_hdr;
+	uint8_t data[56];
 } ping_data;
 
 typedef struct s_socks{
@@ -46,7 +47,7 @@ typedef struct s_params{
 	char ip_addr_dest[16];
 	int ttl;
 	bool verbose;
-	int seq;
+	u_int16_t seq;
 } params;
 
 typedef struct s_ping{
@@ -59,8 +60,8 @@ typedef struct s_ping{
 int	cmd_help(void);
 int	cmd_version(void);
 
-ping_pckt* add_ping(ping_pckt *head, int seq_num);
-ping_pckt* find_ping(ping_pckt *head, int seq_num);
+ping_pckt* add_ping(ping_pckt *head, u_int16_t seq_num);
+ping_pckt* find_ping(ping_pckt *head, u_int16_t seq_num);
 void	free_ping(ping_pckt *head);
 double time_diff(struct timeval start, struct timeval end);
 float ft_sqrt(float number);

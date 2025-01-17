@@ -113,12 +113,12 @@ int send_ping(ping *ping) {
     data->ip_hdr.ip_sum = 0;
     data->ip_hdr.ip_sum = checksum((uint16_t *)&data->ip_hdr, sizeof(data->ip_hdr));
 
-    data->icmp_hdr.icmp_type = ICMP_ECHO;
-    data->icmp_hdr.icmp_code = 0;
-    data->icmp_hdr.icmp_id = htons(getpid());
-    data->icmp_hdr.icmp_seq = htons(ping->params.seq);
-    data->icmp_hdr.icmp_cksum = 0;
-    data->icmp_hdr.icmp_cksum = checksum((uint16_t *)&data->icmp_hdr, sizeof(data->icmp_hdr));
+	data->icmp_hdr.type = ICMP_ECHO;
+	data->icmp_hdr.code = 0;
+	data->icmp_hdr.un.echo.id = htons(ping->params.id);
+	data->icmp_hdr.un.echo.sequence = ping->params.seq;
+	data->icmp_hdr.checksum = 0;
+	data->icmp_hdr.checksum = checksum((uint16_t *)&data->icmp_hdr, sizeof(data->icmp_hdr));
 
     if (sendto(ping->socks.send, data, packet_size, 0, (struct sockaddr *)&dest_addr, sizeof(dest_addr)) < 0) {
         perror("Send failed");
@@ -133,7 +133,7 @@ int send_ping(ping *ping) {
 int recv_ping(ping *ping) {
 	char recv_buffer[4096];
 	struct ip *ip_hdr;
-	struct icmp *icmp_reply;
+	struct icmphdr *icmp_reply;
 	struct timeval recv_time;
 	long nb_bytes;
 	float diff = 0;
@@ -141,20 +141,23 @@ int recv_ping(ping *ping) {
 	socklen_t		addr_len = sizeof(struct sockaddr_in);
 
 	ssize_t recv_len = recvfrom(ping->socks.recv, recv_buffer, sizeof(recv_buffer), 0, (struct sockaddr*)&src_addr, &addr_len);
+	if (recv_len < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+		perror("Recvfrom timeout");
+		return 1;
+	}
 	if (recv_len <= 0) {
-		perror("Recvfrom error or timeout");
 		return 1;
 	}
 	ip_hdr = (struct ip *)recv_buffer;
 	int ip_header_len = ip_hdr->ip_hl * 4;
-	icmp_reply = (struct icmp *)(recv_buffer + ip_header_len);
+	icmp_reply = (struct icmphdr *)(recv_buffer + ip_header_len);
 
 	if (ip_hdr->ip_id == ping->params.id) {
 		return 2;
 	}
 
-	if (icmp_reply->icmp_type == ICMP_TIME_EXCEEDED) {
-		printf("%ld bytes from %s: icmp_seq=%d Time to live exceeded\n", recv_len, inet_ntoa(ip_hdr->ip_src), ntohs(icmp_reply->icmp_seq));
+	if (icmp_reply->type == ICMP_TIME_EXCEEDED) {
+		printf("%ld bytes from %s: Time to live exceeded\n", recv_len - ip_header_len, inet_ntoa(ip_hdr->ip_src));
 		if (ping->params.verbose) {
 			ip_hdr = (struct ip *)(recv_buffer + ip_header_len + 8);
 			printf("IP Hdr Dump\n");
@@ -181,24 +184,24 @@ int recv_ping(ping *ping) {
 				src,
 				inet_ntoa(ip_hdr->ip_dst));
 			free(src);
-			icmp_reply = (struct icmp *)(recv_buffer + ip_header_len + 8 + ip_header_len);
-			printf("ICMP: type %d, code %d, size %ld, id 0x%04x, seq 0x%04x\n", icmp_reply->icmp_type, icmp_reply->icmp_code, recv_len - ip_header_len, ntohs(icmp_reply->icmp_id), ntohs(icmp_reply->icmp_seq));
+			icmp_reply = (struct icmphdr *)(recv_buffer + ip_header_len + 8 + ip_header_len);
+			printf("ICMP: type %d, code %d, size %d, id 0x%04x, seq 0x%04x\n", icmp_reply->type, icmp_reply->code, ntohs(ip_hdr->ip_len) - ip_header_len, ntohs(icmp_reply->un.echo.id), ntohs(icmp_reply->un.echo.sequence));
 		}
 		return 0;
 	}
-	if (icmp_reply->icmp_type == ICMP_ECHOREPLY) {
-		ping_pckt *ping_target = find_ping(ping->pings, ntohs(icmp_reply->icmp_seq));
+	if (icmp_reply->type == ICMP_ECHOREPLY) {
+		ping_pckt *ping_target = find_ping(ping->pings, icmp_reply->un.echo.sequence);
 		if (ping_target) {
 			gettimeofday(&recv_time, NULL);
 			ping_target->recv_time = recv_time;
 			diff = time_diff(ping_target->sent_time, ping_target->recv_time);
 		}
 		nb_bytes = recv_len - ip_header_len;
-		printf("%ld bytes from %s: icmp_seq=%d ttl=%d time=%.3f ms\n", nb_bytes, ping->params.ip_addr_dest, ntohs(icmp_reply->icmp_seq), ip_hdr->ip_ttl, diff);
+		printf("%ld bytes from %s: icmp_seq=%d ttl=%d time=%.3f ms\n", nb_bytes, ping->params.ip_addr_dest, ntohs(icmp_reply->un.echo.sequence), ip_hdr->ip_ttl, diff);
 		return 0;
 	}
-	if (icmp_reply->icmp_type == 8) {
-		printf("From %s icmp_seq=%d Request\n", ping->params.ip_addr_dest, ntohs(icmp_reply->icmp_seq));
+	if (icmp_reply->type == 8) {
+		printf("From %s icmp_seq=%d Request\n", ping->params.ip_addr_dest, ntohs(icmp_reply->un.echo.sequence));
 		return 0;
 	}
 	return 1;
@@ -236,11 +239,13 @@ int cmd_ping(ping *ping) {
 				break;
 			}
 		}
-		ping->params.seq++;
+		uint16_t seq = ntohs(ping->params.seq);
+		seq++;
+		ping->params.seq = htons(seq);
 		sleep(1);
 	}
 	printf("--- %s ft_ping statistics ---\n", ping->params.raw_dest);
-	print_stats(ping->params.seq, ping->pings);
+	print_stats(ntohs(ping->params.seq), ping->pings);
 	close(ping->socks.recv);
 	close(ping->socks.send);
 	free_ping(ping->pings);
